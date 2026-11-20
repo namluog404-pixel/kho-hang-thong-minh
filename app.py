@@ -30,10 +30,8 @@ img_file = st.camera_input("Chụp ảnh hàng hóa") if input_option == "Chụp
 if img_file is not None:
     image = Image.open(img_file).convert("RGB")
     image.thumbnail((800, 800))
-    img_array = np.array(image)
-
     with st.spinner("Đang phân tích hình ảnh..."):
-        results = model.predict(img_array, conf=conf_threshold)
+    results = model.predict(image, conf=conf_threshold)
 
     annotated_img = results[0].plot()
     st.image(annotated_img, caption="Kết quả nhận diện", channels="BGR", use_container_width=True)
