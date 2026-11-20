@@ -9,24 +9,9 @@ from collections import Counter
 st.set_page_config(page_title="Kho hàng thông minh - Nhóm 5", layout="wide")
 st.title("📦 Hệ thống Giám sát Kệ hàng Thông minh")
 
-st.markdown(
-    """
-    <style>
-    [data-testid="stCameraInput"] video,
-    div[data-testid="stCameraInput"] video {
-        transform: scaleX(-1);
-        -webkit-transform: scaleX(-1);
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
 @st.cache_resource
 def load_model():
     return YOLO("yolov8n.pt")
-
 
 def draw_label(img, text, pos):
     x, y = pos
@@ -35,7 +20,6 @@ def draw_label(img, text, pos):
     (tw, th), _ = cv2.getTextSize(text, font, scale, thickness)
     cv2.rectangle(img, (x - 4, y - th - 6), (x + tw + 4, y + 6), (0, 0, 0), -1)
     cv2.putText(img, text, (x, y), font, scale, (255, 255, 255), thickness)
-
 
 model = load_model()
 all_classes = sorted(list(model.names.values()))
@@ -65,6 +49,12 @@ if st.sidebar.button("🔄 Đặt lại lịch sử quét"):
 
 # --- GIAO DIỆN CHÍNH ---
 input_option = st.radio("Chọn nguồn ảnh:", ("Chụp từ Camera", "Tải ảnh lên"), horizontal=True)
+mirror_camera = (
+    st.checkbox("🪞 Chế độ soi gương (Bật cho camera trước, tắt cho camera sau)", value=False)
+    if input_option == "Chụp từ Camera"
+    else False
+)
+
 img_file = (
     st.camera_input("Chụp ảnh kệ hàng")
     if input_option == "Chụp từ Camera"
@@ -75,7 +65,7 @@ if img_file is not None:
     image = Image.open(img_file).convert("RGB")
     image.thumbnail((800, 800))
 
-    if input_option == "Chụp từ Camera":
+    if mirror_camera:
         image = ImageOps.mirror(image)
 
     with st.spinner("Đang phân tích vị trí và kiểm kê..."):
@@ -167,15 +157,6 @@ if img_file is not None:
 
     st.session_state.prev_counts = current_counts
 
+# --- BẢNG LỊCH SỬ & XUẤT BÁO CÁO ---
 if st.session_state.history:
-    st.divider()
-    st.subheader("📋 Lịch sử kiểm kê & Xuất báo cáo")
-    df_history = pd.DataFrame(st.session_state.history)
-    st.dataframe(df_history, use_container_width=True)
-    csv_data = df_history.to_csv(index=False).encode("utf-8-sig")
-    st.download_button(
-        label="⬇️ Tải báo cáo kiểm kê (.CSV)",
-        data=csv_data,
-        file_name=f"bao_cao_kho_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv",
-    )
+    st.
