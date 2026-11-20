@@ -159,4 +159,14 @@ if img_file is not None:
 
 # --- BẢNG LỊCH SỬ & XUẤT BÁO CÁO ---
 if st.session_state.history:
-    st.
+    st.divider()
+    st.subheader("📋 Lịch sử kiểm kê & Xuất báo cáo")
+    df_history = pd.DataFrame(st.session_state.history)
+    st.dataframe(df_history, use_container_width=True)
+    csv_data = df_history.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        label="⬇️ Tải báo cáo kiểm kê (.CSV)",
+        data=csv_data,
+        file_name=f"bao_cao_kho_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+        mime="text/csv",
+    )
