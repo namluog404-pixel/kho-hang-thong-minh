@@ -13,7 +13,6 @@ def load_model():
 
 model = load_model()
 
-
 st.sidebar.header("⚙️ Cấu hình nhận diện")
 custom_classes_input = st.sidebar.text_input(
     "Nhập tên vật thể muốn tìm (tiếng Anh, cách nhau bằng dấu phẩy):",
@@ -21,29 +20,24 @@ custom_classes_input = st.sidebar.text_input(
 )
 conf_threshold = st.sidebar.slider("Ngưỡng độ tự tin (Confidence)", 0.1, 1.0, 0.35, 0.05)
 
-
 class_list = [c.strip() for c in custom_classes_input.split(",") if c.strip()]
 if class_list:
     model.set_classes(class_list)
-
 
 input_option = st.radio("Chọn nguồn ảnh:", ("Chụp từ Camera", "Tải ảnh lên"), horizontal=True)
 img_file = st.camera_input("Chụp ảnh hàng hóa") if input_option == "Chụp từ Camera" else st.file_uploader("Chọn ảnh...", type=["jpg", "jpeg", "png"])
 
 if img_file is not None and class_list:
     image = Image.open(img_file).convert("RGB")
-   
     image.thumbnail((800, 800))
     img_array = np.array(image)
 
     with st.spinner("Đang phân tích hình ảnh..."):
         results = model.predict(img_array, conf=conf_threshold)
 
-    
     annotated_img = results[0].plot()
     st.image(annotated_img, caption="Kết quả nhận diện", channels="BGR", use_container_width=True)
 
-    
     boxes = results[0].boxes
     if len(boxes) > 0:
         detected_names = [model.names[int(cls)] for cls in boxes.cls]
@@ -53,7 +47,3 @@ if img_file is not None and class_list:
             st.write(f"- **{name}**: {count} cái")
     else:
         st.info("Không tìm thấy vật thể nào khớp với danh sách hiện tại.")
-        st.info("Không phát hiện vật thể nào.")
-    else:
-        for k, v in counts.items():
-            st.write(f"- **{k}**: {v} cái")
