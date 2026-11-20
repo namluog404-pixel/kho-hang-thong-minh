@@ -21,7 +21,7 @@ if img_file is not None:
     img_array = np.array(image)
 
     with st.spinner("Đang nhận diện..."):
-        results = model(img_array, conf=0.5, verbose=False)
+        results = model(img_array, conf=0.75, verbose=False)
         annotated_img = results[0].plot()
         annotated_img = annotated_img[:, :, ::-1]  
 
