@@ -25,7 +25,7 @@ if img_file is not None:
         annotated_img = results[0].plot()
         annotated_img = annotated_img[:, :, ::-1]  
 
-    st.image(annotated_img, caption="Kết quả nhận diện", use_container_width=True)
+    st.image(annotated_img, caption="Kết quả nhận diện", channels="BGR", use_container_width=True)
 
     counts = {}
     for box in results[0].boxes:
