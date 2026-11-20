@@ -2,7 +2,7 @@ from collections import Counter
 from datetime import datetime
 import cv2
 import pandas as pd
-from PIL import Image, ImageOps
+from PIL import Image
 import streamlit as st
 from ultralytics import YOLO
 
@@ -62,15 +62,6 @@ if st.sidebar.button("🔄 Đặt lại lịch sử quét"):
 input_option = st.radio(
     "Chọn nguồn ảnh:", ("Chụp từ Camera", "Tải ảnh lên"), horizontal=True
 )
-mirror_pc = (
-    st.checkbox(
-        "🪞 Lật ngang ảnh cho webcam máy tính (thuận chiều tay khi ngồi trước cam)",
-        value=False,
-    )
-    if input_option == "Chụp từ Camera"
-    else False
-)
-
 img_file = (
     st.camera_input("Chụp ảnh kệ hàng")
     if input_option == "Chụp từ Camera"
@@ -80,9 +71,6 @@ img_file = (
 if img_file is not None:
     image = Image.open(img_file).convert("RGB")
     image.thumbnail((800, 800))
-
-    if mirror_pc:
-        image = ImageOps.mirror(image)
 
     with st.spinner("Đang phân tích vị trí và kiểm kê..."):
         results = model.predict(image, conf=conf_threshold)
