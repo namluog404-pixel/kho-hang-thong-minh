@@ -3,15 +3,30 @@ import cv2
 import pandas as pd
 from datetime import datetime
 from ultralytics import YOLO
-from PIL import Image
+from PIL import Image, ImageOps
 from collections import Counter
 
 st.set_page_config(page_title="Kho hàng thông minh - Nhóm 5", layout="wide")
 st.title("📦 Hệ thống Giám sát Kệ hàng Thông minh")
 
+st.markdown(
+    """
+    <style>
+    [data-testid="stCameraInput"] video,
+    div[data-testid="stCameraInput"] video {
+        transform: scaleX(-1);
+        -webkit-transform: scaleX(-1);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 @st.cache_resource
 def load_model():
     return YOLO("yolov8n.pt")
+
 
 def draw_label(img, text, pos):
     x, y = pos
@@ -20,6 +35,7 @@ def draw_label(img, text, pos):
     (tw, th), _ = cv2.getTextSize(text, font, scale, thickness)
     cv2.rectangle(img, (x - 4, y - th - 6), (x + tw + 4, y + 6), (0, 0, 0), -1)
     cv2.putText(img, text, (x, y), font, scale, (255, 255, 255), thickness)
+
 
 model = load_model()
 all_classes = sorted(list(model.names.values()))
@@ -49,11 +65,18 @@ if st.sidebar.button("🔄 Đặt lại lịch sử quét"):
 
 # --- GIAO DIỆN CHÍNH ---
 input_option = st.radio("Chọn nguồn ảnh:", ("Chụp từ Camera", "Tải ảnh lên"), horizontal=True)
-img_file = st.camera_input("Chụp ảnh kệ hàng") if input_option == "Chụp từ Camera" else st.file_uploader("Chọn ảnh...", type=["jpg", "jpeg", "png"])
+img_file = (
+    st.camera_input("Chụp ảnh kệ hàng")
+    if input_option == "Chụp từ Camera"
+    else st.file_uploader("Chọn ảnh...", type=["jpg", "jpeg", "png"])
+)
 
 if img_file is not None:
     image = Image.open(img_file).convert("RGB")
     image.thumbnail((800, 800))
+
+    if input_option == "Chụp từ Camera":
+        image = ImageOps.mirror(image)
 
     with st.spinner("Đang phân tích vị trí và kiểm kê..."):
         results = model.predict(image, conf=conf_threshold)
@@ -101,12 +124,17 @@ if img_file is not None:
         "Thời gian": now_str,
         "Tổng số lượng": sum(current_counts.values()),
         "Chi tiết": ", ".join([f"{k}: {v}" for k, v in current_counts.items()]) if current_counts else "Trống",
-        "Số lỗi xếp sai": len(misplaced_alerts)
+        "Số lỗi xếp sai": len(misplaced_alerts),
     })
 
     col1, col2 = st.columns([3, 2])
     with col1:
-        st.image(annotated_img, caption="Bản đồ giám sát kệ hàng (Chấm đỏ = Tâm vật thể)", channels="BGR", use_container_width=True)
+        st.image(
+            annotated_img,
+            caption="Bản đồ giám sát kệ hàng (Chấm đỏ = Tâm vật thể)",
+            channels="BGR",
+            use_container_width=True,
+        )
 
     with col2:
         st.subheader("📊 Thống kê kiểm kê")
@@ -149,5 +177,5 @@ if st.session_state.history:
         label="⬇️ Tải báo cáo kiểm kê (.CSV)",
         data=csv_data,
         file_name=f"bao_cao_kho_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv"
+        mime="text/csv",
     )
