@@ -50,7 +50,7 @@ if st.sidebar.button("🔄 Đặt lại lịch sử quét"):
 # --- GIAO DIỆN CHÍNH ---
 input_option = st.radio("Chọn nguồn ảnh:", ("Chụp từ Camera", "Tải ảnh lên"), horizontal=True)
 mirror_camera = (
-    st.checkbox("🪞 Chế độ soi gương (Bật cho camera trước, tắt cho camera sau)", value=False)
+    st.checkbox("Lật ảnh (Bật cho camera trước, tắt cho camera sau)", value=False)
     if input_option == "Chụp từ Camera"
     else False
 )
