@@ -9,7 +9,7 @@ st.write("Tải ảnh lên hoặc chụp trực tiếp để hệ thống tự �
 
 @st.cache_resource
 def load_model():
-    return YOLO("yolov8n.pt")
+    return YOLO("best.pt")
 
 model = load_model()
 
