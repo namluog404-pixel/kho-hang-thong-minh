@@ -3,11 +3,13 @@ import cv2
 import pandas as pd
 from datetime import datetime
 from ultralytics import YOLO
-from PIL import Image
+from PIL import Image, ImageOps
 from collections import Counter
 
 st.set_page_config(page_title="Kho hàng thông minh - Nhóm 5", layout="wide")
 st.title("📦 Hệ thống Giám sát Kệ hàng Thông minh")
+
+
 st.markdown(
     """
     <style>
@@ -18,6 +20,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 @st.cache_resource
 def load_model():
     return YOLO("yolov8n.pt")
@@ -38,7 +41,7 @@ if "prev_counts" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# --- THANH CẤU HÌNH ---
+
 st.sidebar.header("⚙️ Cấu hình Kệ hàng (Lưới 2x2)")
 zone_rules = {
     "Ô 1 (Trên-Trái)": st.sidebar.selectbox("Ô 1 (Trên-Trái):", all_classes, index=all_classes.index("bottle")),
@@ -56,24 +59,27 @@ if st.sidebar.button("🔄 Đặt lại lịch sử quét"):
     st.session_state.history = []
     st.sidebar.success("Đã làm mới toàn bộ dữ liệu.")
 
-# --- GIAO DIỆN CHÍNH ---
+
 input_option = st.radio("Chọn nguồn ảnh:", ("Chụp từ Camera", "Tải ảnh lên"), horizontal=True)
 img_file = st.camera_input("Chụp ảnh kệ hàng") if input_option == "Chụp từ Camera" else st.file_uploader("Chọn ảnh...", type=["jpg", "jpeg", "png"])
 
 if img_file is not None:
     image = Image.open(img_file).convert("RGB")
     image.thumbnail((800, 800))
+    
+    
     if input_option == "Chụp từ Camera":
-        image = image.transpose(Image.FLIP_LEFT_RIGHT)
+        image = ImageOps.mirror(image)
 
     with st.spinner("Đang phân tích vị trí và kiểm kê..."):
         results = model.predict(image, conf=conf_threshold)
 
+    
     annotated_img = results[0].plot()
     h, w, _ = annotated_img.shape
     mid_x, mid_y = w // 2, h // 2
 
-    # Vẽ lưới 2x2 và nhãn nền đen chữ trắng
+    
     cv2.line(annotated_img, (mid_x, 0), (mid_x, h), (0, 255, 255), 2)
     cv2.line(annotated_img, (0, mid_y), (w, mid_y), (0, 255, 255), 2)
     draw_label(annotated_img, f"O 1: {zone_rules['Ô 1 (Trên-Trái)']}", (10, 25))
@@ -108,7 +114,7 @@ if img_file is not None:
         if cls_name != expected:
             misplaced_alerts.append(f"⚠️ **{cls_name}** nằm sai tại **{zone}** (Quy định: `{expected}`)")
 
-    # Lưu lịch sử kiểm kê
+    
     now_str = datetime.now().strftime("%H:%M:%S")
     st.session_state.history.append({
         "Thời gian": now_str,
@@ -138,7 +144,7 @@ if img_file is not None:
             st.success("✅ Tất cả vật phẩm đều nằm đúng ô quy định.")
 
         st.divider()
-        st.subheader("📉 Biến động kho")
+        st.subheader(" Biến động kho")
         taken_items = []
         for item, prev_qty in st.session_state.prev_counts.items():
             curr_qty = current_counts.get(item, 0)
@@ -152,7 +158,7 @@ if img_file is not None:
 
     st.session_state.prev_counts = current_counts
 
-# --- BẢNG LỊCH SỬ & XUẤT BÁO CÁO ---
+
 if st.session_state.history:
     st.divider()
     st.subheader("📋 Lịch sử kiểm kê & Xuất báo cáo")
