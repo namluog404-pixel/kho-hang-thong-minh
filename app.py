@@ -1,33 +1,33 @@
 import streamlit as st
-from ultralytics import YOLOWorld
+from ultralytics import YOLO
 from PIL import Image
 import numpy as np
 from collections import Counter
 
-st.set_page_config(page_title="Kho hàng thông minh - YOLO-World", layout="centered")
-st.title("📦 Hệ thống Nhận diện Hàng hóa Linh hoạt")
+st.set_page_config(page_title="Kho hàng thông minh - Nhóm 5", layout="centered")
+st.title("📦 Hệ thống Nhận diện Hàng hóa Thông minh")
 
-@st.cache_resource
-def load_model():
-    return YOLOWorld("yolov8s-worldv2.pt")
+# Chỉ giữ đúng 1 model trong RAM tại một thời điểm để chống tràn 1GB RAM
+@st.cache_resource(max_entries=1)
+def load_model(model_path):
+    return YOLO(model_path)
 
-model = load_model()
-
-st.sidebar.header("⚙️ Cấu hình nhận diện")
-custom_classes_input = st.sidebar.text_input(
-    "Nhập tên vật thể muốn tìm (tiếng Anh, cách nhau bằng dấu phẩy):",
-    value="bottle, box, phone, pen, snack, cup, glasses"
+st.sidebar.header("⚙️ Cấu hình hệ thống")
+mode = st.sidebar.radio(
+    "Chọn chế độ nhận diện:",
+    ("Kho hàng chuyên dụng (9 món VN)", "Vật thể phổ thông (80 loại)")
 )
-conf_threshold = st.sidebar.slider("Ngưỡng độ tự tin (Confidence)", 0.1, 1.0, 0.35, 0.05)
 
-class_list = [c.strip() for c in custom_classes_input.split(",") if c.strip()]
-if class_list:
-    model.set_classes(class_list)
+model_path = "best.pt" if mode == "Kho hàng chuyên dụng (9 món VN)" else "yolov8n.pt"
+default_conf = 0.65 if model_path == "best.pt" else 0.40
+conf_threshold = st.sidebar.slider("Ngưỡng độ tự tin (Confidence)", 0.1, 1.0, default_conf, 0.05)
+
+model = load_model(model_path)
 
 input_option = st.radio("Chọn nguồn ảnh:", ("Chụp từ Camera", "Tải ảnh lên"), horizontal=True)
 img_file = st.camera_input("Chụp ảnh hàng hóa") if input_option == "Chụp từ Camera" else st.file_uploader("Chọn ảnh...", type=["jpg", "jpeg", "png"])
 
-if img_file is not None and class_list:
+if img_file is not None:
     image = Image.open(img_file).convert("RGB")
     image.thumbnail((800, 800))
     img_array = np.array(image)
@@ -46,4 +46,4 @@ if img_file is not None and class_list:
         for name, count in counts.items():
             st.write(f"- **{name}**: {count} cái")
     else:
-        st.info("Không tìm thấy vật thể nào khớp với danh sách hiện tại.")
+        st.info("Không phát hiện vật thể nào đạt ngưỡng tự tin.")
