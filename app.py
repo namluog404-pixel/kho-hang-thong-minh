@@ -54,7 +54,8 @@ img_file = st.camera_input("Chụp ảnh kệ hàng") if input_option == "Chụp
 if img_file is not None:
     image = Image.open(img_file).convert("RGB")
     image.thumbnail((800, 800))
-
+if input_option == "Chụp từ Camera":
+        image = image.transpose(Image.FLIP_LEFT_RIGHT)
     with st.spinner("Đang phân tích vị trí và kiểm kê..."):
         results = model.predict(image, conf=conf_threshold)
 
@@ -119,7 +120,7 @@ if img_file is not None:
             st.info("Chưa phát hiện hàng hóa nào.")
 
         st.divider()
-        st.subheader("🚨 Cảnh báo vị trí")
+        st.subheader(" Cảnh báo vị trí")
         if misplaced_alerts:
             for alert in misplaced_alerts:
                 st.error(alert)
@@ -127,7 +128,7 @@ if img_file is not None:
             st.success("✅ Tất cả vật phẩm đều nằm đúng ô quy định.")
 
         st.divider()
-        st.subheader("📉 Biến động kho")
+        st.subheader(" Biến động kho")
         taken_items = []
         for item, prev_qty in st.session_state.prev_counts.items():
             curr_qty = current_counts.get(item, 0)
