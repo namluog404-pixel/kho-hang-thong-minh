@@ -8,7 +8,16 @@ from collections import Counter
 
 st.set_page_config(page_title="Kho hàng thông minh - Nhóm 5", layout="wide")
 st.title("📦 Hệ thống Giám sát Kệ hàng Thông minh")
-
+st.markdown(
+    """
+    <style>
+    [data-testid="stCameraInput"] video {
+        transform: scaleX(-1);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 @st.cache_resource
 def load_model():
     return YOLO("yolov8n.pt")
