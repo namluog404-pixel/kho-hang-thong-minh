@@ -1,17 +1,19 @@
-import streamlit as st
+from collections import Counter
+from datetime import datetime
 import cv2
 import pandas as pd
-from datetime import datetime
+from PIL import Image
+import streamlit as st
 from ultralytics import YOLO
-from PIL import Image, ImageOps
-from collections import Counter
 
 st.set_page_config(page_title="Kho hàng thông minh - Nhóm 5", layout="wide")
 st.title("📦 Hệ thống Giám sát Kệ hàng Thông minh")
 
+
 @st.cache_resource
 def load_model():
     return YOLO("yolov8n.pt")
+
 
 def draw_label(img, text, pos):
     x, y = pos
@@ -20,6 +22,7 @@ def draw_label(img, text, pos):
     (tw, th), _ = cv2.getTextSize(text, font, scale, thickness)
     cv2.rectangle(img, (x - 4, y - th - 6), (x + tw + 4, y + 6), (0, 0, 0), -1)
     cv2.putText(img, text, (x, y), font, scale, (255, 255, 255), thickness)
+
 
 model = load_model()
 all_classes = sorted(list(model.names.values()))
@@ -32,10 +35,18 @@ if "history" not in st.session_state:
 # --- THANH CẤU HÌNH ---
 st.sidebar.header("⚙️ Cấu hình Kệ hàng (Lưới 2x2)")
 zone_rules = {
-    "Ô 1 (Trên-Trái)": st.sidebar.selectbox("Ô 1 (Trên-Trái):", all_classes, index=all_classes.index("bottle")),
-    "Ô 2 (Trên-Phải)": st.sidebar.selectbox("Ô 2 (Trên-Phải):", all_classes, index=all_classes.index("cup")),
-    "Ô 3 (Dưới-Trái)": st.sidebar.selectbox("Ô 3 (Dưới-Trái):", all_classes, index=all_classes.index("book")),
-    "Ô 4 (Dưới-Phải)": st.sidebar.selectbox("Ô 4 (Dưới-Phải):", all_classes, index=all_classes.index("cell phone")),
+    "Ô 1 (Trên-Trái)": st.sidebar.selectbox(
+        "Ô 1 (Trên-Trái):", all_classes, index=all_classes.index("bottle")
+    ),
+    "Ô 2 (Trên-Phải)": st.sidebar.selectbox(
+        "Ô 2 (Trên-Phải):", all_classes, index=all_classes.index("cup")
+    ),
+    "Ô 3 (Dưới-Trái)": st.sidebar.selectbox(
+        "Ô 3 (Dưới-Trái):", all_classes, index=all_classes.index("book")
+    ),
+    "Ô 4 (Dưới-Phải)": st.sidebar.selectbox(
+        "Ô 4 (Dưới-Phải):", all_classes, index=all_classes.index("cell phone")
+    ),
 }
 
 st.sidebar.divider()
@@ -48,13 +59,9 @@ if st.sidebar.button("🔄 Đặt lại lịch sử quét"):
     st.sidebar.success("Đã làm mới toàn bộ dữ liệu.")
 
 # --- GIAO DIỆN CHÍNH ---
-input_option = st.radio("Chọn nguồn ảnh:", ("Chụp từ Camera", "Tải ảnh lên"), horizontal=True)
-mirror_camera = (
-    st.checkbox("Lật ảnh (Bật cho camera trước, tắt cho camera sau)", value=False)
-    if input_option == "Chụp từ Camera"
-    else False
+input_option = st.radio(
+    "Chọn nguồn ảnh:", ("Chụp từ Camera", "Tải ảnh lên"), horizontal=True
 )
-
 img_file = (
     st.camera_input("Chụp ảnh kệ hàng")
     if input_option == "Chụp từ Camera"
@@ -64,9 +71,6 @@ img_file = (
 if img_file is not None:
     image = Image.open(img_file).convert("RGB")
     image.thumbnail((800, 800))
-
-    if mirror_camera:
-        image = ImageOps.mirror(image)
 
     with st.spinner("Đang phân tích vị trí và kiểm kê..."):
         results = model.predict(image, conf=conf_threshold)
@@ -78,9 +82,17 @@ if img_file is not None:
     cv2.line(annotated_img, (mid_x, 0), (mid_x, h), (0, 255, 255), 2)
     cv2.line(annotated_img, (0, mid_y), (w, mid_y), (0, 255, 255), 2)
     draw_label(annotated_img, f"O 1: {zone_rules['Ô 1 (Trên-Trái)']}", (10, 25))
-    draw_label(annotated_img, f"O 2: {zone_rules['Ô 2 (Trên-Phải)']}", (mid_x + 10, 25))
-    draw_label(annotated_img, f"O 3: {zone_rules['Ô 3 (Dưới-Trái)']}", (10, mid_y + 25))
-    draw_label(annotated_img, f"O 4: {zone_rules['Ô 4 (Dưới-Phải)']}", (mid_x + 10, mid_y + 25))
+    draw_label(
+        annotated_img, f"O 2: {zone_rules['Ô 2 (Trên-Phải)']}", (mid_x + 10, 25)
+    )
+    draw_label(
+        annotated_img, f"O 3: {zone_rules['Ô 3 (Dưới-Trái)']}", (10, mid_y + 25)
+    )
+    draw_label(
+        annotated_img,
+        f"O 4: {zone_rules['Ô 4 (Dưới-Phải)']}",
+        (mid_x + 10, mid_y + 25),
+    )
 
     current_counts = Counter()
     misplaced_alerts = []
@@ -107,13 +119,19 @@ if img_file is not None:
 
         expected = zone_rules[zone]
         if cls_name != expected:
-            misplaced_alerts.append(f"⚠️ **{cls_name}** nằm sai tại **{zone}** (Quy định: `{expected}`)")
+            misplaced_alerts.append(
+                f"⚠️ **{cls_name}** nằm sai tại **{zone}** (Quy định: `{expected}`)"
+            )
 
     now_str = datetime.now().strftime("%H:%M:%S")
     st.session_state.history.append({
         "Thời gian": now_str,
         "Tổng số lượng": sum(current_counts.values()),
-        "Chi tiết": ", ".join([f"{k}: {v}" for k, v in current_counts.items()]) if current_counts else "Trống",
+        "Chi tiết": (
+            ", ".join([f"{k}: {v}" for k, v in current_counts.items()])
+            if current_counts
+            else "Trống"
+        ),
         "Số lỗi xếp sai": len(misplaced_alerts),
     })
 
@@ -148,7 +166,9 @@ if img_file is not None:
         for item, prev_qty in st.session_state.prev_counts.items():
             curr_qty = current_counts.get(item, 0)
             if curr_qty < prev_qty:
-                taken_items.append(f"🔻 **{item}**: đã bị lấy đi **{prev_qty - curr_qty}** cái (còn {curr_qty})")
+                taken_items.append(
+                    f"🔻 **{item}**: đã bị lấy đi **{prev_qty - curr_qty}** cái (còn {curr_qty})"
+                )
         if taken_items:
             for msg in taken_items:
                 st.warning(msg)
