@@ -151,7 +151,7 @@ model = load_model()
 label_font = load_font(size=18)
 raw_classes = sorted(list(model.names.values()))
 
-# --- THANH CẤU HÌNH ---
+
 st.sidebar.header("⚙️ Cấu hình Kệ hàng (3 Ô Cạnh Nhau)")
 lang_mode = st.sidebar.radio("Ngôn ngữ nhãn:", ("Tiếng Việt", "Tiếng Anh"), horizontal=True)
 use_vi = lang_mode == "Tiếng Việt"
@@ -186,7 +186,7 @@ if st.sidebar.button("🔄 Đặt lại lịch sử quét"):
     st.session_state.history = []
     st.sidebar.success("Đã làm mới toàn bộ dữ liệu.")
 
-# --- GIAO DIỆN CHÍNH ---
+
 input_option = st.radio(
     "Chọn nguồn ảnh:", ("Chụp từ Camera", "Tải ảnh lên"), horizontal=True
 )
@@ -306,7 +306,7 @@ if img_file is not None:
 
     st.session_state.prev_counts = current_counts
 
-# --- BẢNG LỊCH SỬ & XUẤT BÁO CÁO ---
+
 if st.session_state.history:
     st.divider()
     st.subheader("📋 Lịch sử kiểm kê & Xuất báo cáo")
