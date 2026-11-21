@@ -94,13 +94,16 @@ VI_LABELS = {
     "toothbrush": "bàn chải đánh răng",
 }
 
+BASE_DIR = Path(__file__).resolve().parent
 FONT_CANDIDATES = [
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-    "C:/Windows/Fonts/arial.ttf",
-    "C:/Windows/Fonts/segoeui.ttf",
-    "C:/Windows/Fonts/tahoma.ttf",
+    BASE_DIR / "DejaVuSans-Bold.ttf",
+    BASE_DIR / "DejaVuSans.ttf",
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+    Path("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
+    Path("C:/Windows/Fonts/arial.ttf"),
+    Path("C:/Windows/Fonts/segoeui.ttf"),
+    Path("C:/Windows/Fonts/tahoma.ttf"),
 ]
 
 
@@ -119,14 +122,13 @@ def to_vi_label(cls_name: str, use_vi: bool) -> str:
 
 @st.cache_resource
 def load_font(size: int = 18):
-    for path_str in FONT_CANDIDATES:
-        font_path = Path(path_str)
+    for font_path in FONT_CANDIDATES:
         if font_path.exists():
             try:
                 return ImageFont.truetype(str(font_path), size=size)
             except OSError:
                 continue
-    return ImageFont.load_default()
+    return ImageFont.load_default(size=size) if "size" in ImageFont.load_default.__code__.co_varnames else ImageFont.load_default()
 
 
 @st.cache_resource
@@ -242,7 +244,6 @@ if img_file is not None:
                 f"⚠️ **{disp_cls}** nằm sai tại **{zone}** (Quy định: `{expected_disp}`)"
             )
 
-    # Vẽ 2 đường chia dọc tạo 3 ô đứng cạnh nhau
     draw.line([(cut_1, 0), (cut_1, h)], fill=(255, 255, 0), width=2)
     draw.line([(cut_2, 0), (cut_2, h)], fill=(255, 255, 0), width=2)
     draw_label_pil(draw, f"Ô 1: {to_vi_label(zone_rules['Ô 1 (Trái)'], use_vi)}", (10, 10), label_font)
