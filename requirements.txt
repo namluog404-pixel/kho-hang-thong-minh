@@ -1,5 +1,5 @@
 streamlit
-ultralytics
+inference-sdk
 opencv-python-headless
 pillow
 
