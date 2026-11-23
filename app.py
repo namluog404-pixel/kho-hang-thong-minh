@@ -1,6 +1,7 @@
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.request import urlretrieve
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from numpy import asarray
 import pandas as pd
@@ -11,87 +12,14 @@ from ultralytics import YOLO
 st.set_page_config(page_title="Kho hàng thông minh - Nhóm 5", layout="wide")
 st.title("📦 Hệ thống Giám sát Kệ hàng Thông minh")
 
+
+BEST_PT_URL = "https://github.com/Pluto235-RTX/Big5-RCUET/blob/main/TESTING/runs/my_project/obj_detecter/weights/best.pt"
+LOCAL_WEIGHTS_PATH = Path("best.pt")
+
 VI_LABELS = {
-    "person": "người",
-    "bicycle": "xe đạp",
-    "car": "ô tô",
-    "motorcycle": "xe máy",
-    "airplane": "máy bay",
-    "bus": "xe buýt",
-    "train": "tàu hỏa",
-    "truck": "xe tải",
-    "boat": "thuyền",
-    "traffic light": "đèn giao thông",
-    "fire hydrant": "trụ cứu hỏa",
-    "stop sign": "biển báo dừng",
-    "parking meter": "đồng hồ đỗ xe",
-    "bench": "ghế dài",
-    "bird": "chim",
-    "cat": "mèo",
-    "dog": "chó",
-    "horse": "ngựa",
-    "sheep": "cừu",
-    "cow": "bò",
-    "elephant": "voi",
-    "bear": "gấu",
-    "zebra": "ngựa vằn",
-    "giraffe": "hươu cao cổ",
-    "backpack": "ba lô",
-    "umbrella": "ô / dù",
-    "handbag": "túi xách",
-    "tie": "cà vạt",
-    "suitcase": "vali",
-    "frisbee": "đĩa ném",
-    "skis": "ván trượt tuyết",
-    "snowboard": "ván trượt tuyết đơn",
-    "sports ball": "bóng thể thao",
-    "kite": "diều",
-    "baseball bat": "gậy bóng chày",
-    "baseball glove": "găng bóng chày",
-    "skateboard": "ván trượt",
-    "surfboard": "ván lướt sóng",
-    "tennis racket": "vợt tennis",
-    "bottle": "chai",
-    "wine glass": "ly thủy tinh",
-    "cup": "cốc / ly",
-    "fork": "nĩa",
-    "knife": "dao",
-    "spoon": "thìa",
-    "bowl": "bát / tô",
-    "banana": "chuối",
-    "apple": "táo",
-    "sandwich": "bánh mì kẹp",
-    "orange": "cam",
-    "broccoli": "bông cải xanh",
-    "carrot": "cà rốt",
-    "hot dog": "xúc xích kẹp",
-    "pizza": "pizza",
-    "donut": "bánh rán",
-    "cake": "bánh ngọt",
-    "chair": "ghế",
-    "couch": "ghế sofa",
-    "potted plant": "chậu cây",
-    "bed": "giường",
-    "dining table": "bàn ăn",
-    "toilet": "bồn cầu",
-    "tv": "tivi",
-    "laptop": "laptop",
-    "mouse": "chuột máy tính",
-    "remote": "điều khiển",
-    "keyboard": "bàn phím",
-    "cell phone": "điện thoại",
-    "microwave": "lò vi sóng",
-    "oven": "lò nướng",
-    "toaster": "máy nướng bánh mì",
-    "sink": "bồn rửa",
-    "refrigerator": "tủ lạnh",
-    "book": "sách",
-    "clock": "đồng hồ",
-    "vase": "bình hoa",
-    "scissors": "kéo",
-    "teddy bear": "gấu bông",
-    "hair drier": "máy sấy tóc",
-    "toothbrush": "bàn chải đánh răng",
+    "chocopie": "ChocoPie",
+    "custas": "Custas",
+    "milo": "Milo",
 }
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -128,11 +56,22 @@ def load_font(size: int = 18):
                 return ImageFont.truetype(str(font_path), size=size)
             except OSError:
                 continue
-    return ImageFont.load_default(size=size) if "size" in ImageFont.load_default.__code__.co_varnames else ImageFont.load_default()
+    return (
+        ImageFont.load_default(size=size)
+        if "size" in ImageFont.load_default.__code__.co_varnames
+        else ImageFont.load_default()
+    )
 
 
 @st.cache_resource
-def load_model():
+def load_model(weights_url: str = BEST_PT_URL):
+    if weights_url:
+        cache_path = BASE_DIR / "downloaded_best.pt"
+        if not cache_path.exists():
+            urlretrieve(weights_url, cache_path)
+        return YOLO(str(cache_path))
+    if LOCAL_WEIGHTS_PATH.exists():
+        return YOLO(str(LOCAL_WEIGHTS_PATH))
     return YOLO("yolov8n.pt")
 
 
@@ -160,9 +99,9 @@ display_to_raw = {to_vi_label(c, use_vi): c for c in raw_classes}
 display_classes = list(display_to_raw.keys())
 
 default_raw = {
-    "Ô 1 (Trái)": "bottle",
-    "Ô 2 (Giữa)": "cup",
-    "Ô 3 (Phải)": "book",
+    "Ô 1 (Trái)": "chocopie" if "chocopie" in raw_classes else (raw_classes[0] if raw_classes else ""),
+    "Ô 2 (Giữa)": "custas" if "custas" in raw_classes else (raw_classes[min(1, len(raw_classes) - 1)] if raw_classes else ""),
+    "Ô 3 (Phải)": "milo" if "milo" in raw_classes else (raw_classes[min(2, len(raw_classes) - 1)] if raw_classes else ""),
 }
 
 if "prev_counts" not in st.session_state:
@@ -179,7 +118,6 @@ for zone_name, raw_default in default_raw.items():
 
 st.sidebar.divider()
 conf_threshold = st.sidebar.slider("Ngưỡng độ tự tin (Confidence)", 0.1, 1.0, 0.40, 0.05)
-ignore_person = st.sidebar.checkbox("Bỏ qua người (person) khi kiểm kê", value=True)
 
 if st.sidebar.button("🔄 Đặt lại lịch sử quét"):
     st.session_state.prev_counts = Counter()
@@ -214,9 +152,6 @@ if img_file is not None:
 
     for box in results[0].boxes:
         raw_cls = model.names[int(box.cls[0])]
-        if ignore_person and raw_cls == "person":
-            continue
-
         conf_val = float(box.conf[0])
         x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
         cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
