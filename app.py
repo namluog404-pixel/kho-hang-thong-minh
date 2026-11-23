@@ -1,20 +1,19 @@
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.request import urlretrieve
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from inference_sdk import InferenceConfiguration, InferenceHTTPClient
 from numpy import asarray
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 import streamlit as st
-from ultralytics import YOLO
 
 st.set_page_config(page_title="Kho hàng thông minh - Nhóm 5", layout="wide")
 st.title("📦 Hệ thống Giám sát Kệ hàng Thông minh")
 
-
-BEST_PT_URL = ""
-LOCAL_WEIGHTS_PATH = Path("best.pt")
+WORKSPACE_NAME = "big5-rcuet"
+WORKFLOW_ID = "big5-rcuet-3-rfdetr-small-t1-vbig5-rcuet-3-rfdetr-small-t1-logic"
+RAW_CLASSES = ["chocopie", "custas", "milo"]
 
 VI_LABELS = {
     "chocopie": "ChocoPie",
@@ -45,7 +44,7 @@ def get_vn_now() -> datetime:
 def to_vi_label(cls_name: str, use_vi: bool) -> str:
     if not use_vi:
         return cls_name
-    return VI_LABELS.get(cls_name, cls_name)
+    return VI_LABELS.get(cls_name.lower(), cls_name)
 
 
 @st.cache_resource
@@ -64,44 +63,62 @@ def load_font(size: int = 18):
 
 
 @st.cache_resource
-def load_model(weights_url: str = BEST_PT_URL):
-    if weights_url:
-        cache_path = BASE_DIR / "downloaded_best.pt"
-        if not cache_path.exists():
-            urlretrieve(weights_url, cache_path)
-        return YOLO(str(cache_path))
-    if LOCAL_WEIGHTS_PATH.exists():
-        return YOLO(str(LOCAL_WEIGHTS_PATH))
-    return YOLO("yolov8n.pt")
+def get_client():
+    api_key = st.secrets.get("ROBOFLOW_API_KEY", "")
+    if not api_key:
+        raise ValueError("Thiếu ROBOFLOW_API_KEY trong Streamlit Secrets.")
+    return InferenceHTTPClient(
+        api_url="https://serverless.roboflow.com",
+        api_key=api_key,
+    ).configure(InferenceConfiguration(api_key_transport="header"))
 
 
-def draw_label_pil(draw: ImageDraw.ImageDraw, text: str, pos: tuple[int, int], font):
+def extract_predictions(data) -> list[dict]:
+    """Tự động trích xuất danh sách bounding boxes từ cấu trúc lồng nhau của Workflow."""
+    preds = []
+    if isinstance(data, dict):
+        if all(k in data for k in ("x", "y", "width", "height", "class", "confidence")):
+            preds.append(data)
+        else:
+            for v in data.values():
+                preds.extend(extract_predictions(v))
+    elif isinstance(data, list):
+        for item in data:
+            preds.extend(extract_predictions(item))
+    return preds
+
+
+def draw_label_pil(draw: ImageDraw.ImageDraw, text: str, pos: tuple[int, int], font, img_w: int):
     x, y = pos
-    bbox = draw.textbbox((x, y), text, font=font)
     pad_x, pad_y = 5, 3
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+
+    x = max(pad_x, min(x, img_w - text_w - pad_x))
+    y = max(pad_y, y)
+
     draw.rectangle(
-        [bbox[0] - pad_x, bbox[1] - pad_y, bbox[2] + pad_x, bbox[3] + pad_y],
+        [x - pad_x, y - pad_y, x + text_w + pad_x, y + text_h + pad_y],
         fill=(0, 0, 0),
     )
     draw.text((x, y), text, fill=(255, 255, 255), font=font)
 
 
-model = load_model()
+client = get_client()
 label_font = load_font(size=18)
-raw_classes = sorted(list(model.names.values()))
-
 
 st.sidebar.header("⚙️ Cấu hình Kệ hàng (3 Ô Cạnh Nhau)")
 lang_mode = st.sidebar.radio("Ngôn ngữ nhãn:", ("Tiếng Việt", "Tiếng Anh"), horizontal=True)
 use_vi = lang_mode == "Tiếng Việt"
 
-display_to_raw = {to_vi_label(c, use_vi): c for c in raw_classes}
+display_to_raw = {to_vi_label(c, use_vi): c for c in RAW_CLASSES}
 display_classes = list(display_to_raw.keys())
 
 default_raw = {
-    "Ô 1 (Trái)": "chocopie" if "chocopie" in raw_classes else (raw_classes[0] if raw_classes else ""),
-    "Ô 2 (Giữa)": "custas" if "custas" in raw_classes else (raw_classes[min(1, len(raw_classes) - 1)] if raw_classes else ""),
-    "Ô 3 (Phải)": "milo" if "milo" in raw_classes else (raw_classes[min(2, len(raw_classes) - 1)] if raw_classes else ""),
+    "Ô 1 (Trái)": "chocopie",
+    "Ô 2 (Giữa)": "custas",
+    "Ô 3 (Phải)": "milo",
 }
 
 if "prev_counts" not in st.session_state:
@@ -124,7 +141,6 @@ if st.sidebar.button("🔄 Đặt lại lịch sử quét"):
     st.session_state.history = []
     st.sidebar.success("Đã làm mới toàn bộ dữ liệu.")
 
-
 input_option = st.radio(
     "Chọn nguồn ảnh:", ("Chụp từ Camera", "Tải ảnh lên"), horizontal=True
 )
@@ -138,10 +154,17 @@ if img_file is not None:
     image = Image.open(img_file).convert("RGB")
     image.thumbnail((800, 800))
 
-    with st.spinner("Đang phân tích vị trí và kiểm kê..."):
-        results = model.predict(image, conf=conf_threshold)
+    with st.spinner("Đang phân tích vị trí và kiểm kê qua Roboflow Workflow..."):
+        result = client.run_workflow(
+            workspace_name=WORKSPACE_NAME,
+            workflow_id=WORKFLOW_ID,
+            images={"image": image},
+            use_cache=True,
+        )
 
-    pil_annotated = Image.fromarray(results[0].orig_img[:, :, ::-1].copy())
+    predictions = extract_predictions(result)
+
+    pil_annotated = image.copy()
     draw = ImageDraw.Draw(pil_annotated)
     w, h = pil_annotated.size
     cut_1 = w // 3
@@ -150,17 +173,22 @@ if img_file is not None:
     current_counts = Counter()
     misplaced_alerts = []
 
-    for box in results[0].boxes:
-        raw_cls = model.names[int(box.cls[0])]
-        conf_val = float(box.conf[0])
-        x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-        cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    for pred in predictions:
+        conf_val = float(pred["confidence"])
+        if conf_val < conf_threshold:
+            continue
+
+        raw_cls = str(pred["class"]).strip().lower()
+        cx, cy = float(pred["x"]), float(pred["y"])
+        bw, bh = float(pred["width"]), float(pred["height"])
+        x1, y1 = int(cx - bw / 2), int(cy - bh / 2)
+        x2, y2 = int(cx + bw / 2), int(cy + bh / 2)
 
         disp_cls = to_vi_label(raw_cls, use_vi)
         current_counts[disp_cls] += 1
 
         draw.rectangle([x1, y1, x2, y2], outline=(0, 200, 0), width=2)
-        draw_label_pil(draw, f"{disp_cls} {conf_val:.2f}", (x1, max(y1 - 24, 6)), label_font)
+        draw_label_pil(draw, f"{disp_cls} {conf_val:.2f}", (x1, max(y1 - 24, 6)), label_font, w)
 
         if cx < cut_1:
             zone = "Ô 1 (Trái)"
@@ -181,9 +209,9 @@ if img_file is not None:
 
     draw.line([(cut_1, 0), (cut_1, h)], fill=(255, 255, 0), width=2)
     draw.line([(cut_2, 0), (cut_2, h)], fill=(255, 255, 0), width=2)
-    draw_label_pil(draw, f"Ô 1: {to_vi_label(zone_rules['Ô 1 (Trái)'], use_vi)}", (10, 10), label_font)
-    draw_label_pil(draw, f"Ô 2: {to_vi_label(zone_rules['Ô 2 (Giữa)'], use_vi)}", (cut_1 + 10, 10), label_font)
-    draw_label_pil(draw, f"Ô 3: {to_vi_label(zone_rules['Ô 3 (Phải)'], use_vi)}", (cut_2 + 10, 10), label_font)
+    draw_label_pil(draw, f"Ô 1: {to_vi_label(zone_rules['Ô 1 (Trái)'], use_vi)}", (10, 10), label_font, w)
+    draw_label_pil(draw, f"Ô 2: {to_vi_label(zone_rules['Ô 2 (Giữa)'], use_vi)}", (cut_1 + 10, 10), label_font, w)
+    draw_label_pil(draw, f"Ô 3: {to_vi_label(zone_rules['Ô 3 (Phải)'], use_vi)}", (cut_2 + 10, 10), label_font, w)
 
     annotated_img = asarray(pil_annotated)
 
@@ -240,7 +268,6 @@ if img_file is not None:
             st.write("Không có vật phẩm nào bị lấy đi.")
 
     st.session_state.prev_counts = current_counts
-
 
 if st.session_state.history:
     st.divider()
