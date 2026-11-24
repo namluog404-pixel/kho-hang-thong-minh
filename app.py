@@ -4,17 +4,17 @@ from pathlib import Path
 from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from inference_sdk import InferenceConfiguration, InferenceHTTPClient
 from numpy import asarray
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 import streamlit as st
+from ultralytics import YOLO
 
 st.set_page_config(page_title="Thanh toán thông minh - Nhóm 5", layout="wide")
 st.title("🛒 Hệ thống Thanh toán Thông minh (AI Checkout)")
 
-WORKSPACE_NAME = "big5-rcuet"
-WORKFLOW_ID = "big5-rcuet-3-rfdetr-small-t1-vbig5-rcuet-3-rfdetr-small-t1-logic"
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_PATH = BASE_DIR / "best.pt"
 
 PRODUCTS = {
     "chocopie": {"name": "Bánh ChocoPie (Hộp)", "default_price": 55000},
@@ -22,7 +22,6 @@ PRODUCTS = {
     "milo": {"name": "Sữa Milo (Hộp)", "default_price": 8000},
 }
 
-BASE_DIR = Path(__file__).resolve().parent
 FONT_CANDIDATES = [
     BASE_DIR / "DejaVuSans-Bold.ttf",
     BASE_DIR / "DejaVuSans.ttf",
@@ -58,28 +57,13 @@ def load_font(size: int = 18):
 
 
 @st.cache_resource
-def get_client():
-    api_key = st.secrets.get("ROBOFLOW_API_KEY", "")
-    if not api_key:
-        raise ValueError("Thiếu ROBOFLOW_API_KEY trong Streamlit Secrets.")
-    return InferenceHTTPClient(
-        api_url="https://serverless.roboflow.com",
-        api_key=api_key,
-    ).configure(InferenceConfiguration(api_key_transport="header"))
-
-
-def extract_predictions(data) -> list[dict]:
-    preds = []
-    if isinstance(data, dict):
-        if all(k in data for k in ("x", "y", "width", "height", "class", "confidence")):
-            preds.append(data)
-        else:
-            for v in data.values():
-                preds.extend(extract_predictions(v))
-    elif isinstance(data, list):
-        for item in data:
-            preds.extend(extract_predictions(item))
-    return preds
+def load_model(model_path: Path):
+    if not model_path.exists():
+        raise FileNotFoundError(
+            f"Không tìm thấy tệp mô hình tại '{model_path.name}'. "
+            "Hãy tải best.pt lên cùng thư mục với app.py."
+        )
+    return YOLO(str(model_path))
 
 
 def draw_label_pil(
@@ -99,7 +83,6 @@ def draw_label_pil(
     x = max(pad_x, min(x, img_w - text_w - pad_x))
     y = max(pad_y, y)
 
-    # Dịch chuyển nhẹ lên/xuống nếu nhãn bị đè lên nhãn trước đó
     for _ in range(5):
         rect = (x - pad_x, y - pad_y, x + text_w + pad_x, y + text_h + pad_y)
         overlap = any(
@@ -123,7 +106,7 @@ def build_vietqr_url(bank_id: str, account_no: str, account_name: str, amount: i
     )
 
 
-client = get_client()
+model = load_model(MODEL_PATH)
 label_font = load_font(size=18)
 
 if "transactions" not in st.session_state:
@@ -132,6 +115,7 @@ if "transactions" not in st.session_state:
 # --- SIDEBAR: CẤU HÌNH GIÁ & THANH TOÁN ---
 st.sidebar.header("⚙️ Cấu hình Cửa hàng")
 conf_threshold = st.sidebar.slider("Ngưỡng độ tự tin (Confidence)", 0.1, 1.0, 0.40, 0.05)
+iou_threshold = st.sidebar.slider("Ngưỡng chồng lấn (IoU)", 0.1, 0.9, 0.45, 0.05)
 
 st.sidebar.subheader("💰 Bảng đơn giá (VNĐ)")
 prices = {}
@@ -162,15 +146,13 @@ if img_file is not None:
     image = Image.open(img_file).convert("RGB")
     image.thumbnail((800, 800))
 
-    with st.spinner("Đang nhận diện sản phẩm trên khay..."):
-        result = client.run_workflow(
-            workspace_name=WORKSPACE_NAME,
-            workflow_id=WORKFLOW_ID,
-            images={"image": image},
-            use_cache=True,
+    with st.spinner("Đang nhận diện sản phẩm trên khay bằng YOLO..."):
+        results = model.predict(
+            source=image,
+            conf=conf_threshold,
+            iou=iou_threshold,
+            verbose=False,
         )
-
-    predictions = extract_predictions(result)
 
     pil_annotated = image.copy()
     draw = ImageDraw.Draw(pil_annotated)
@@ -179,29 +161,26 @@ if img_file is not None:
     cart_counts = Counter()
     used_label_boxes = []
 
-    for pred in predictions:
-        conf_val = float(pred["confidence"])
-        if conf_val < conf_threshold:
-            continue
+    boxes = results[0].boxes
+    if boxes is not None:
+        for box in boxes:
+            conf_val = float(box.conf[0])
+            cls_id = int(box.cls[0])
+            raw_cls = str(model.names[cls_id]).strip().lower()
+            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
 
-        raw_cls = str(pred["class"]).strip().lower()
-        cx, cy = float(pred["x"]), float(pred["y"])
-        bw, bh = float(pred["width"]), float(pred["height"])
-        x1, y1 = int(cx - bw / 2), int(cy - bh / 2)
-        x2, y2 = int(cx + bw / 2), int(cy + bh / 2)
+            cart_counts[raw_cls] += 1
+            disp_name = PRODUCTS.get(raw_cls, {}).get("name", raw_cls).split(" (")[0]
 
-        cart_counts[raw_cls] += 1
-        disp_name = PRODUCTS.get(raw_cls, {}).get("name", raw_cls).split(" (")[0]
-
-        draw.rectangle([x1, y1, x2, y2], outline=(0, 200, 0), width=2)
-        draw_label_pil(
-            draw,
-            f"{disp_name} {conf_val:.2f}",
-            (x1, max(y1 - 24, 6)),
-            label_font,
-            w,
-            used_label_boxes,
-        )
+            draw.rectangle([x1, y1, x2, y2], outline=(0, 200, 0), width=2)
+            draw_label_pil(
+                draw,
+                f"{disp_name} {conf_val:.2f}",
+                (x1, max(y1 - 24, 6)),
+                label_font,
+                w,
+                used_label_boxes,
+            )
 
     col1, col2 = st.columns([3, 2])
     with col1:
