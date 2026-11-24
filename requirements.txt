@@ -1,6 +1,5 @@
 streamlit
-ultralytics
-opencv-python-headless
+inference-sdk
 pillow
 pandas
 numpy
